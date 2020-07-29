@@ -47,7 +47,8 @@ pam_sm_authenticate(pam_handle_t *pamh, int flags __unused,
     int argc, const char *argv[])
 {
 	int i;
-	int retval;
+	int retval; // Used for a bunch of internal return values
+	int pam_retval = PAM_AUTH_ERR; // What we actually return
 	int style;
 	LDAP *ldp;
 	char *bind_dn;
@@ -63,7 +64,7 @@ pam_sm_authenticate(pam_handle_t *pamh, int flags __unused,
 
 	// Initialize LDAP from Args
 	for (i=0 ; i < argc ; i++) {
-		openpam_log(PAM_LOG_NOTICE,"arg %d: %s", i, argv[i]);
+		PAM_LOG("arg %d: %s", i, argv[i]);
 		if (strncmp(argv[i], "ldap_server=", 12) == 0) {
 			retval = asprintf(&ldap_server, "%s", argv[i] + 12);
 			if (retval == -1) {
@@ -87,9 +88,9 @@ pam_sm_authenticate(pam_handle_t *pamh, int flags __unused,
 	style = PAM_PROMPT_ECHO_ON;
 	retval = pam_prompt(pamh, style, &git_user, "git user: ");
 	if (retval != PAM_SUCCESS) {
-		//return (retval);
+		return (retval);
 	}
-	openpam_log(PAM_LOG_NOTICE,"Got user: %s", git_user);
+	PAM_LOG("Got user: %s", git_user);
 
 	/*
 	 * It doesn't make sense to use a password that has already been
@@ -101,15 +102,15 @@ pam_sm_authenticate(pam_handle_t *pamh, int flags __unused,
 	style = PAM_PROMPT_ECHO_OFF;
 	retval = pam_prompt(pamh, style, &git_password, "git Password: ");
 	if (retval != PAM_SUCCESS) {
-		//return (retval);
+		return (retval);
 	}
-	openpam_log(PAM_LOG_NOTICE,"Got password: %s", git_password);
+	PAM_LOG("Got password: %s", git_password);
 	pam_set_item(pamh, PAM_AUTHTOK, git_password);
 
 	// Initialize credential (Password)
 	cred.bv_val = git_password;
 	cred.bv_len = strlen(git_password);
-	openpam_log(PAM_LOG_NOTICE,"Set BER credential");
+	PAM_LOG("Set BER credential");
 
 	// Initialize username (dn)
 	asprintf(&bind_dn, "%s=%s,%s",
@@ -117,24 +118,36 @@ pam_sm_authenticate(pam_handle_t *pamh, int flags __unused,
 	if (retval == -1) {
 		return (PAM_BUF_ERR);
 	}
-	openpam_log(PAM_LOG_NOTICE,"BindDN: %s", bind_dn);
-	openpam_log(PAM_LOG_NOTICE,"Server: %s", ldap_server);
+	PAM_LOG("BindDN: %s", bind_dn);
+	PAM_LOG("Server: %s", ldap_server);
 
+	/*
+	 * Actually connect to the LDAP server and try to bind.
+	*/
 	retval = ldap_initialize(&ldp, ldap_server);
-	openpam_log(PAM_LOG_NOTICE,"LDAP Init: %s", ldap_err2string(retval));
+	PAM_LOG("LDAP Init: %s", ldap_err2string(retval));
+
 	retval = ldap_sasl_bind_s(ldp, bind_dn, LDAP_SASL_SIMPLE,
 	         &cred, NULL, NULL, &servcred);
-	openpam_log(PAM_LOG_NOTICE,"LDAP Bind: %s", ldap_err2string(retval));
-	retval = ldap_unbind_ext_s(ldp, NULL, NULL);
-	openpam_log(PAM_LOG_NOTICE,"LDAP Unbind: %s", ldap_err2string(retval));
+	PAM_LOG("LDAP Bind: %s", ldap_err2string(retval));
+	if (retval == LDAP_SUCCESS) {
+		pam_retval = PAM_SUCCESS;
+	} else {
+		pam_retval = PAM_AUTH_ERR;
+	}
 
+	retval = ldap_unbind_ext_s(ldp, NULL, NULL);
+	PAM_LOG("LDAP Unbind: %s", ldap_err2string(retval));
+
+	// Clean up everything we threw on the heap
 	free(git_user);
 	free(git_password);
 	free(bind_dn);
 	free(ldap_server);
 	free(dn_attr);
 	free(dn_base);
-	return (PAM_SUCCESS);
+
+	return (pam_retval);
 }
 
 PAM_EXTERN int
