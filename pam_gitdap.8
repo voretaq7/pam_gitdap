@@ -1,0 +1,109 @@
+.\" generated with Ronn/v0.7.3
+.\" http://github.com/rtomayko/ronn/tree/0.7.3
+.
+.TH "PAM_GITDAP" "8" "August 2020" "" ""
+.
+.SH "NAME"
+\fBpam_gitdap\fR \- PAM module for authenticating git users against LDAP
+.
+.SH "SYNOPSIS"
+\fI[service\-name]\fR auth \fIcontrol\-flag\fR pam_gitdap \fI\fImodule configuration\fR\fR
+.
+.SH "DESCRIPTION"
+\fBpam_gitdap\fR provides PAM authentication through a simple LDAP bind\. It is designed to allow a user\'s LDAP username/password to be used as a second authentication factor for git hosting services such as Gitea or Gogs\.
+.
+.SH "MODULE CONFIGURATION"
+The following values are mandatory in the PAM module configuration:
+.
+.TP
+\fBldap_uri=\fR\fIURI\fR
+The LDAP URI address for the LDAP server to bind to\. Format is \fIldap://host:port\fR or \fIldaps://host:port\fR
+.
+.TP
+\fBdn_attr=\fR\fIAttribute\fR
+The Bind DN naming attribute, for example \fIcn\fR or \fIuid\fR\.
+.
+.TP
+\fBdn_base=\fR\fIBase\fR
+The base of the Bind DN, appended after the naming attribute\.
+.
+.br
+For example \fIou=users,dc=example,dc=com\fR\.
+.
+.P
+The following values are optional in the PAM configuration:
+.
+.TP
+\fBprompt_user\fR
+Prompt for the git username\. This is used if multiple git users share a single ssh account, which is typically the case for services like Gitea\.
+.
+.TP
+\fBdebug\fR
+Enables module debugging\.
+.
+.SH "USAGE RECOMMENDATIONS"
+It is recommended to create a second SSH server exclusively for git, running on an alternate port\. You may do this by creating a symbolic link from your system \fBsshd\fR binary to an alternate name such as \fB/usr/local/sbin/git\-sshd\fR\.
+.
+.P
+Create a separate PAM configuration for the \fBgit\-sshd\fR service which includes an \fBauth\fR entry for this module along with any other PAM modules you wish to use\.
+.
+.P
+The \fIsshd_config\fR file for this server must have the \fBChallengeResponseAuthentication\fR option set to \fByes\fR to allow the PAM module to prompt for the LDAP password and/or username\.
+.
+.br
+It should also have \fBAllowUsers\fR set to only your git service user and \fBAuthenticationMethods\fR set to \fBpublickey,keyboard\-interactive\fR\. This will require your users to prevent a valid SSH key before being prompted for their LDAP credentials\.
+.
+.P
+\fBIT IS NOT RECOMMENDED TO USE THIS MODULE AS YOUR ONLY AUTHENTICATION METHOD\. IT SHOULD ALWAYS BE USED IN CONJUNCTION WITH SSH KEYS AS DESCRIBED ABOVE, OR AS PART OF A MORE COMPREHENSIVE PAM STACK\.\fR
+.
+.SH "MODULE OPERATION"
+The module will attempt to bind to the LDAP directory as
+.
+.br
+"\fBdn_attr\fR=\fIusername\fR,\fBdn_base\fR" using the password supplied by the user\.
+.
+.P
+It returns one of the following PAM result codes:
+.
+.TP
+\fBPAM_SUCCESS\fR
+The LDAP bind succeeded\.
+.
+.TP
+\fBPAM_AUTH_ERR\fR
+The LDAP bind failed\.
+.
+.TP
+\fBPAM_SERVICE_ERR\fR
+The module configuration is invalid (one or more mandatory values missing)\.
+.
+.TP
+\fBPAM_BUF_ERR\fR
+An internal error occurred in string processing/manipulation\.
+.
+.SH "BUGS"
+\fBOnly a simple bind is performed\fR
+.
+.br
+This is insecure unless used over TLS (ldaps://) connections\.
+.
+.P
+\fBNo validation is performed on user\-supplied usernames\fR This is intentional as it allows for flexibility in the username\.
+.
+.br
+For example if configured with \fBdn_attr= dn_base= prompt_user\fR the username expected would be the full LDAP DN to bind as\.
+.
+.P
+\fBNo validation is performed on dn_attr or dn_base\fR
+.
+.br
+This is intentional as it allows more complex Bind DNs to be constructed\.
+.
+.SH "COPYRIGHT"
+pam_gitdap is copyright (C) 2020 Michael Graziano\.
+.
+.br
+Source is available at \fIhttps://github\.com/voretaq7/pam_gitdap\fR
+.
+.SH "SEE ALSO"
+pam(8), pam\.conf(5)
